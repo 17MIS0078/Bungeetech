@@ -15,7 +15,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -55,20 +57,26 @@ public class Bungeetech {
             }
         }
 
-        if (csvData != null && !csvData.isEmpty()) {
-            prepareCountryOutputFile(csvData);
+        List<CSVData> usaCountryCSVData = null;
+
+        if (!csvData.isEmpty()) {
+            usaCountryCSVData = prepareCountryOutputFile(csvData);
         }
-        
-        
+
+        if (usaCountryCSVData != null && !usaCountryCSVData.isEmpty()) {
+            prepareMinimumPriceFile(usaCountryCSVData);
+        }
     }
 
-    private static void prepareCountryOutputFile(List<CSVData> csvData) {
+    private static List<CSVData> prepareCountryOutputFile(List<CSVData> csvData) {
 
         List<CSVData> usaCountryCSVData = csvData.stream()
                 .filter(p -> p.getCountry().contains("USA"))
                 .collect(Collectors.toList());
 
         writeUSACountryCSVFile(usaCountryCSVData);
+
+        return usaCountryCSVData;
     }
 
     private static void prepareInputCSVData(int lineNo, List<CSVData> csvData, String eachLine) {
@@ -121,21 +129,34 @@ public class Bungeetech {
 
         csvData.addAll(csvHeaderData);
         csvData.addAll(csvBodyData);
+        String fileLocation = "https://github.com/17MIS0078/Bungeetech/tree/master/output/filteredCountry.csv";
+        writeOutputFile(csvData, fileLocation);
+    }
+
+    private static void writeOutputFile(List<String[]> csvData, String fileLocation) {
 
         File csvOutputFile = null;
+        URI fileUri = null;
+        PrintWriter pw =null;
         try {
-            URI fileUri = new URI("https://github.com/17MIS0078/Bungeetech/tree/master/output/filteredCountry.csv");
+            fileUri = new URI(fileLocation);
             int startIndex = fileUri.toString().lastIndexOf('/');
             String fileName = fileUri.toString().substring(startIndex + 1);
-            System.out.println(fileName);
             csvOutputFile = new File(fileName);
-            PrintWriter pw = new PrintWriter(csvOutputFile);
+            pw = new PrintWriter(csvOutputFile);
             csvData.stream()
                     .map(eachCsvData -> convertDataToCSV(eachCsvData))
                     .forEach(pw::println);
+
         } catch (FileNotFoundException | URISyntaxException ex) {
-            Logger.getLogger(Bungeetech.class.getName()).log(Level.SEVERE, null, ex);
+            System.out.println(ex.getMessage());
         }
+        finally{
+            if(pw!=null){
+                pw.close();
+            }
+        }
+
     }
 
     private static String convertDataToCSV(String[] data) {
@@ -151,5 +172,51 @@ public class Bungeetech {
             escapedData = "\"" + data + "\"";
         }
         return escapedData;
+    }
+
+    private static void prepareMinimumPriceFile(List<CSVData> usaCountryCSVData) {
+
+        Map<String, List<CSVData>> countryDataBySKU = usaCountryCSVData.stream().collect(Collectors.groupingBy(CSVData::getSku));
+
+        List<String[]> priceCSVData = new ArrayList<>();
+        List<String[]> priceCSVHeaderData = new ArrayList<>();
+        List<String[]> priceCSVBodyData = new ArrayList<>();
+
+        priceCSVHeaderData.add(new String[]{"SKU", "FIRST_MINIMUM_PRICE", "FIRST_SECOND_PRICE"});
+
+        for (Map.Entry<String, List<CSVData>> entry : countryDataBySKU.entrySet()) {
+
+            List<CSVData> skuData = entry.getValue();
+
+            List<String> priceList = null;
+
+            String firstMinPrice = "";
+            String secondMinPrice = "";
+
+            if (skuData != null && !skuData.isEmpty()) {
+
+                priceList = skuData.stream().map(CSVData::getPrice).collect(Collectors.toList());
+            }
+
+            if (priceList != null && !priceList.isEmpty()) {
+
+                Collections.sort(priceList);
+
+                firstMinPrice = priceList.get(0);
+
+                if (priceList.size() > 1) {
+                    secondMinPrice = priceList.get(1);
+                }
+            }
+
+            priceCSVBodyData.add(new String[]{entry.getKey(), firstMinPrice.replace("$", ""), secondMinPrice.replace("$", "")});
+        }
+
+        priceCSVData.addAll(priceCSVHeaderData);
+        priceCSVData.addAll(priceCSVBodyData);
+
+        String fileLocation = "https://github.com/17MIS0078/Bungeetech/tree/master/output/lowestPrice.csv";
+
+        writeOutputFile(priceCSVData, fileLocation);
     }
 }
